@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import sys
+import atexit
 import asyncio
 from absl import flags, app
 import gradio as gr
@@ -36,6 +37,7 @@ class Runner(object):
         connection_type = "sse",
         server_url = mcp_host,
       ))
+    atexit.register(self.__del__)
   def __del__(self,):
     asyncio.run(self.agent.cleanup())
   def __call__(self, question):
