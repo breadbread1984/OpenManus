@@ -170,12 +170,12 @@ def parse_args() -> argparse.Namespace:
         help="Communication method: stdio or http (default: stdio)",
     )
     parser.add_argument(
-        "--host",
+        "--mcp_host",
         default="0.0.0.0",
         help="mcp service host, when use transport sse"
     )
     parser.add_argument(
-        "--port",
+        "--mcp_port",
         default=8000,
         help="mcp service port, when use transport sse"
     )
@@ -186,5 +186,5 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Create and run server (maintaining original flow)
-    server = MCPServer(host = args.host, port = args.port)
+    server = MCPServer(host = args.mcp_host, port = args.mcp_port)
     server.run(transport=args.transport)
