@@ -6,11 +6,6 @@ import asyncio
 from absl import flags, app
 import gradio as gr
 from gradio.routes import mount_gradio_app
-import uvicorn
-from fastapi import FastAPI, Depends, Form, HTTPException, status, Request
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, RedirectResponse
-from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from app.agent.mcp import MCPAgent
 from app.config import config
 from app.logger import logger
@@ -66,17 +61,9 @@ def create_interface():
     submit_btn.click(chatbot_response, inputs = [user_input, chatbot], outputs = [chatbot], concurrency_limit = 64)
   return demo
 
-application = FastAPI()
-
 def main(unused_argv):
-  global application
   demo = create_interface()
-  application = mount_gradio_app(app = application, blocks = demo, path = '/')
-  uvicorn.run(
-    application,
-    host = FLAGS.host,
-    port = FLAGS.port
-  )
+  demo.launch(server_name = FLAGS.host, server_port = FLAGS.port)
 
 if __name__ == "__main__":
   add_options()
