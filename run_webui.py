@@ -20,7 +20,7 @@ FLAGS = flags.FLAGS
 def add_options():
   flags.DEFINE_string('host', default = '0.0.0.0', help = 'service host')
   flags.DEFINE_integer('port', default = 8081, help = 'service port')
-  flags.DEFINE_enum('conn_type', default = 'stdio', enum_values = {'stdio', 'sse'}, help = 'connection type: stdio or sse')
+  flags.DEFINE_enum('conn_type', default = 'sse', enum_values = {'stdio', 'sse'}, help = 'connection type: stdio or sse')
   flags.DEFINE_string('mcp_host', default = 'http://127.0.0.1:8000/sse', help = 'url to mcp service')
 
 class Runner(object):
