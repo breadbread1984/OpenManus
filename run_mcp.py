@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         "--connection",
         "-c",
         choices=["stdio", "sse"],
-        default="sse",
+        default="stdio",
         help="Connection type: stdio or sse",
     )
     parser.add_argument(

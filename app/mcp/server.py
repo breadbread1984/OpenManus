@@ -166,7 +166,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--transport",
         choices=["stdio", "sse"],
-        default="sse",
+        default="stdio",
         help="Communication method: stdio or http (default: stdio)",
     )
     parser.add_argument(
