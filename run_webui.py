@@ -54,6 +54,7 @@ def create_interface():
       with gr.Row():
         chatbot = gr.Chatbot(height = 450)
     submit_btn.click(chatbot_response, inputs = [user_input, chatbot], outputs = [chatbot], concurrency_limit = 64)
+  return demo
 
 application = FastAPI()
 
