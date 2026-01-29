@@ -41,7 +41,7 @@ class Runner(object):
   def __del__(self,):
     asyncio.run(self.agent.cleanup())
   def __call__(self, question):
-    reutrn asyncio.run(self.agent.run(question))
+    return asyncio.run(self.agent.run(question))
 
 def create_interface():
   # 1) open manus agent
