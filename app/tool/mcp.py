@@ -43,7 +43,7 @@ class MCPClients(ToolCollection):
     sessions: Dict[str, ClientSession] = {}
     exit_stacks: Dict[str, AsyncExitStack] = {}
     description: str = "MCP client tools for server interaction"
-    cleanup_tasks: Dict[str, anyio.abc.Task] = {}
+    cleanup_tasks: Dict = {}
 
     def __init__(self):
         super().__init__()  # Initialize with empty tools list
