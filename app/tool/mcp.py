@@ -1,4 +1,3 @@
-import anyio
 from contextlib import AsyncExitStack
 from typing import Dict, List, Optional
 
@@ -43,7 +42,6 @@ class MCPClients(ToolCollection):
     sessions: Dict[str, ClientSession] = {}
     exit_stacks: Dict[str, AsyncExitStack] = {}
     description: str = "MCP client tools for server interaction"
-    cleanup_tasks: Dict = {}
 
     def __init__(self):
         super().__init__()  # Initialize with empty tools list
@@ -62,37 +60,13 @@ class MCPClients(ToolCollection):
 
         exit_stack = AsyncExitStack()
         self.exit_stacks[server_id] = exit_stack
-        self.sessions[server_id] = None
 
-        async with exit_stack:
-          streams_context = sse_client(url=server_url)
-          streams = await exit_stack.enter_async_context(streams_context)
-          session = await exit_stack.enter_async_context(ClientSession(*streams))
-          self.sessions[server_id] = session
+        streams_context = sse_client(url=server_url)
+        streams = await exit_stack.enter_async_context(streams_context)
+        session = await exit_stack.enter_async_context(ClientSession(*streams))
+        self.sessions[server_id] = session
 
-          await self._initialize_and_list_tools(server_id)
-
-        async def cleanup():
-          try:
-            await anyio.sleep_forever()
-          finally:
-            await self._safe_close(server_id)
-        self.cleanup_tasks[server_id] = await anyio.create_task_group().spawn(cleanup)
-
-    async def _safe_close(self, server_id: str) -> None:
-        exit_stack = self.exit_stacks.pop(server_id, None)
-        if not exit_stack:
-            return
-        try:
-            await exit_stack.aclose()
-        except RuntimeError as e:
-            if any(phrase in str(e).lower() for phrase in ["cancel scope", "different task", "athrow()", "generator didn't stop"]):
-                logger.warning(f"Ignored known cleanup error for {server_id}: {e}")
-            else:
-                logger.error(f"Unexpected close error for {server_id}: {e}")
-                raise
-        except Exception as e:
-            logger.warning(f"Cleanup warning for {server_id}: {e}")
+        await self._initialize_and_list_tools(server_id)
 
     async def connect_stdio(
         self, command: str, args: List[str], server_id: str = ""
@@ -181,10 +155,7 @@ class MCPClients(ToolCollection):
     async def disconnect(self, server_id: str = "") -> None:
         """Disconnect from a specific MCP server or all servers if no server_id provided."""
         if server_id:
-            tg = anyio.get_cancel_scope().group
-            if server_id in self.cleanup_tasks:
-                self.cleanup_tasks[server_id].cancel()
-                self.cleanup_tasks.pop(server_id, None)
+            if server_id in self.sessions:
                 try:
                     exit_stack = self.exit_stacks.get(server_id)
 
@@ -214,11 +185,10 @@ class MCPClients(ToolCollection):
                     logger.info(f"Disconnected from MCP server {server_id}")
                 except Exception as e:
                     logger.error(f"Error disconnecting from server {server_id}: {e}")
-            await self._safe_close(server_id)
         else:
             # Disconnect from all servers in a deterministic order
-            tasks = [self.disconnect(sid) for sid in list(self.sessions)]
-            await anyio.gather(*tasks, cancel_on_error=False)
+            for sid in sorted(list(self.sessions.keys())):
+                await self.disconnect(sid)
             self.tool_map = {}
             self.tools = tuple()
             logger.info("Disconnected from all MCP servers")
