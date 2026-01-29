@@ -4,6 +4,7 @@ import sys
 import asyncio
 from absl import flags, app
 import gradio as gr
+from gradio.routes import mount_gradio_app
 import uvicorn
 from fastapi import FastAPI, Depends, Form, HTTPException, status, Request
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, RedirectResponse
