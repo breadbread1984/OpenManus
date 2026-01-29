@@ -22,25 +22,33 @@ def add_options():
   flags.DEFINE_enum('conn_type', default = 'stdio', enum_values = {'stdio', 'sse'}, help = 'connection type: stdio or sse')
   flags.DEFINE_string('mcp_host', default = 'http://127.0.0.1:8000/sse', help = 'url to mcp service')
 
+class Runner(object):
+  def __init__(self, conn_type, mcp_host):
+    self.agent = MCPAgent()
+    if conn_type == 'stdio':
+      asyncio.run(self.agent.initialize(
+        connection_type = "stdio",
+        command = sys.executable,
+        args = ['-m', config.mcp_config.server_reference]
+      ))
+    else:
+      asyncio.run(self.agent.initialize(
+        connection_type = "sse",
+        server_url = mcp_host,
+      ))
+  def __del__(self,):
+    asyncio.run(self.agent.cleanup())
+  def __call__(self, question):
+    reutrn asyncio.run(self.agent.run(question))
+
 def create_interface():
   # 1) open manus agent
-  agent = MCPAgent()
-  if FLAGS.conn_type == 'stdio':
-    asyncio.run(agent.initialize(
-      connection_type = "stdio",
-      command = sys.executable,
-      args = ['-m', config.mcp_config.server_reference]
-    ))
-  else:
-    asyncio.run(agent.initialize(
-      connection_type = "sse",
-      server_url = FLAGS.mcp_host,
-    ))
+  runner = Runner(FLAGS.conn_type, FLAGS.mcp_host)
   # 2) callback functions
   def chatbot_response(user_input, history):
     history.append({'role': 'user', 'content': user_input})
     yield history
-    response = asyncio.run(agent.run(user_input))
+    response = runner(user_input)
     history.append({'role': 'assistant', 'content': response})
     yield history
   # 3) GUI definition
