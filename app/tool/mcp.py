@@ -159,27 +159,16 @@ class MCPClients(ToolCollection):
                 try:
                     exit_stack = self.exit_stacks.get(server_id)
 
-                    # Close the exit stack which will handle session cleanup.
-                    # In some environments (e.g. with AnyIO task groups and SSE),
-                    # the underlying async generator and cancel scopes may raise
-                    # noisy errors such as:
-                    # - "generator didn't stop after athrow()"
-                    # - "Attempted to exit cancel scope in a different task than it was entered in"
-                    # These happen during shutdown/cleanup and are safe to ignore.
+                    # Close the exit stack which will handle session cleanup
                     if exit_stack:
                         try:
                             await exit_stack.aclose()
-                        except BaseException as e:
-                            msg = str(e).lower()
-                            if (
-                                "cancel scope" in msg
-                                or "generator didn't stop after athrow" in msg
-                            ):
+                        except RuntimeError as e:
+                            if "cancel scope" in str(e).lower():
                                 logger.warning(
-                                    f"Ignoring benign SSE shutdown error during disconnect from {server_id}: {e}"
+                                    f"Cancel scope error during disconnect from {server_id}, continuing with cleanup: {e}"
                                 )
                             else:
-                                # Re-raise unexpected errors (including cancellations)
                                 raise
 
                     # Clean up references
