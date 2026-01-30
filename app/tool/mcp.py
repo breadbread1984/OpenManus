@@ -76,7 +76,7 @@ class MCPClients(ToolCollection):
                 logger.info("✅ initialize 完成")
                 await self._initialize_and_list_tools(server_id)
                 logger.info("✅ 工具初始化完成")
-                while self._running:
+                while self._running[server_id] == True:
                     await asyncio.sleep(0.1)
       except Exception as e:
         logger.error(f"❌ SSE 连接失败: {e}", exc_info=True)
@@ -108,7 +108,7 @@ class MCPClients(ToolCollection):
                 self.sessions[server_id] = session
                 await session.initialize()
                 await self._initialize_and_list_tools(server_id)
-                while self._running:
+                while self._running[server_id] == True:
                     await asyncio.sleep(0.1)
 
     async def _initialize_and_list_tools(self, server_id: str) -> None:
