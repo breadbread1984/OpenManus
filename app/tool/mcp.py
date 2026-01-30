@@ -62,13 +62,13 @@ class MCPClients(ToolCollection):
 
         self._running[server_id] = True
         self._task[server_id] = asyncio.create_task(self._sse_session_loop(server_url, server_id))
-        await self._initialize_and_list_tools(server_id)
 
     async def _sse_session_loop(self, server_url, server_id):
         async with sse_client(url = server_url) as streams:
             async with ClientSession(*streams) as session:
                 self.sessions[server_id] = session
                 await session.initialize()
+                await self._initialize_and_list_tools(server_id)
                 while self._running:
                     await asyncio.sleep(0.1)
 
@@ -89,13 +89,13 @@ class MCPClients(ToolCollection):
 
         self._running[server_id] = True
         self._task[server_id] = asyncio.create_task(self._stdio_session_loop(server_params, server_id))
-        await self._initialize_and_list_tools(server_id)
 
     async def _stdio_session_loop(self, server_params, server_id):
         async with stdio_client(server_params) as streams:
             async with ClientSession(*streams) as session:
                 self.sessions[server_id] = session
                 await session.initialize()
+                await self._initialize_and_list_tools(server_id)
                 while self._running:
                     await asyncio.sleep(0.1)
 
