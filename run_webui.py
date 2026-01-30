@@ -63,7 +63,7 @@ def create_interface():
 
 def main(unused_argv):
   demo = create_interface()
-  demo.launch(server_name = FLAGS.host, server_port = FLAGS.port)
+  demo.launch(server_name = FLAGS.host, server_port = FLAGS.port, root_path = '/manus')
 
 if __name__ == "__main__":
   add_options()
