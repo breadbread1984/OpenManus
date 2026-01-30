@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import AsyncExitStack
 from typing import Dict, List, Optional
 
@@ -40,7 +41,8 @@ class MCPClients(ToolCollection):
     """
 
     sessions: Dict[str, ClientSession] = {}
-    exit_stacks: Dict[str, AsyncExitStack] = {}
+    _running: Dict[str, bool] = {}
+    _task: Dict[str, asyncio.Task] = {}
     description: str = "MCP client tools for server interaction"
 
     def __init__(self):
@@ -58,15 +60,17 @@ class MCPClients(ToolCollection):
         if server_id in self.sessions:
             await self.disconnect(server_id)
 
-        exit_stack = AsyncExitStack()
-        self.exit_stacks[server_id] = exit_stack
-
-        streams_context = sse_client(url=server_url)
-        streams = await exit_stack.enter_async_context(streams_context)
-        session = await exit_stack.enter_async_context(ClientSession(*streams))
-        self.sessions[server_id] = session
-
+        self._running[server_id] = True
+        self._task[server_id] = asyncio.create_task(self._sse_session_loop(server_url, server_id))
         await self._initialize_and_list_tools(server_id)
+
+    async def _sse_session_loop(self, server_url, server_id):
+        async with sse_client(url = server_url) as streams:
+            async with ClientSession(*streams) as session:
+                self.sessions[server_id] = session
+                await session.initialize()
+                while self._running:
+                    await asyncio.sleep(0.1)
 
     async def connect_stdio(
         self, command: str, args: List[str], server_id: str = ""
@@ -81,18 +85,19 @@ class MCPClients(ToolCollection):
         if server_id in self.sessions:
             await self.disconnect(server_id)
 
-        exit_stack = AsyncExitStack()
-        self.exit_stacks[server_id] = exit_stack
-
         server_params = StdioServerParameters(command=command, args=args)
-        stdio_transport = await exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
-        read, write = stdio_transport
-        session = await exit_stack.enter_async_context(ClientSession(read, write))
-        self.sessions[server_id] = session
 
+        self._running[server_id] = True
+        self._task[server_id] = asyncio.create_task(self._stdio_session_loop(server_params, server_id))
         await self._initialize_and_list_tools(server_id)
+
+    async def _stdio_session_loop(self, server_params, server_id):
+        async with stdio_client(server_params) as streams:
+            async with ClientSession(*streams) as session:
+                self.sessions[server_id] = session
+                await session.initialize()
+                while self._running:
+                    await asyncio.sleep(0.1)
 
     async def _initialize_and_list_tools(self, server_id: str) -> None:
         """Initialize session and populate tool map."""
@@ -157,23 +162,14 @@ class MCPClients(ToolCollection):
         if server_id:
             if server_id in self.sessions:
                 try:
-                    exit_stack = self.exit_stacks.get(server_id)
-
-                    # Close the exit stack which will handle session cleanup
-                    if exit_stack:
-                        try:
-                            await exit_stack.aclose()
-                        except RuntimeError as e:
-                            if "cancel scope" in str(e).lower():
-                                logger.warning(
-                                    f"Cancel scope error during disconnect from {server_id}, continuing with cleanup: {e}"
-                                )
-                            else:
-                                raise
+                    self._running[server_id] = False
+                    self._task[server_id].cancel()
+                    await self._task[server_id]
 
                     # Clean up references
                     self.sessions.pop(server_id, None)
-                    self.exit_stacks.pop(server_id, None)
+                    self._running.pop(server_id, None)
+                    self._task.pop(server_id, None)
 
                     # Remove tools associated with this server
                     self.tool_map = {
