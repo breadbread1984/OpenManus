@@ -1,4 +1,5 @@
 import asyncio
+from anyio import create_task_group
 from contextlib import AsyncExitStack
 from typing import Dict, List, Optional
 
@@ -41,6 +42,7 @@ class MCPClients(ToolCollection):
     """
 
     sessions: Dict[str, ClientSession] = {}
+    _ready_events: Dict[str, asyncio.Event] = {}
     _running: Dict[str, bool] = {}
     _task: Dict[str, asyncio.Task] = {}
     description: str = "MCP client tools for server interaction"
@@ -60,30 +62,45 @@ class MCPClients(ToolCollection):
         if server_id in self.sessions:
             await self.disconnect(server_id)
 
+        self._ready_events[server_id] = asyncio.Event()
         self._task[server_id] = asyncio.create_task(self._sse_session_loop(server_url, server_id))
+        await asyncio.wait_for(self._ready_events[server_id].wait(), timeout = 30.0)
+        logger.info(f"✅ SSE {server_id} 就绪")
 
     async def _sse_session_loop(self, server_url, server_id):
-      try:
-        self._running[server_id] = True
-        logger.info(f"🔄 尝试连接 SSE: {server_url}")
-        async with sse_client(url = server_url) as streams:
-            logger.info(f"✅ SSE streams 获取成功: {streams}")
-            async with ClientSession(*streams) as session:
-                logger.info(f"✅ ClientSession 创建成功")
-                self.sessions[server_id] = session
-                logger.info("🔄 调用 session.initialize()")
-                await session.initialize()
-                logger.info("✅ initialize 完成")
-                await self._initialize_and_list_tools(server_id)
-                logger.info("✅ 工具初始化完成")
-                while self._running[server_id] == True:
-                    await asyncio.sleep(0.1)
-                logger.info(f"loop exited with self._running[server_id]= {self._running[server_id]}")
-      except Exception as e:
-        logger.error(f"❌ SSE 连接失败: {e}", exc_info=True)
-        self.sessions.pop(server_id, None)
-      finally:
-        logger.info(f"🧹 清理 {server_id}")
+        async with create_task_group() as tg:
+            try:
+                self._running[server_id] = True
+                logger.info(f"🔄 尝试连接 SSE: {server_url}")
+                async with asyncio.timeout(30):
+                    async with sse_client(url = server_url) as streams:
+                        logger.info(f"✅ SSE streams 获取成功: {streams}")
+                        async with ClientSession(*streams) as session:
+                            logger.info(f"✅ ClientSession 创建成功")
+                            self.sessions[server_id] = session
+                            logger.info("🔄 调用 session.initialize()")
+                            await session.initialize()
+                            logger.info("✅ initialize 完成")
+                            await self._initialize_and_list_tools(server_id)
+                            self._ready_events[server_id].set()
+                            logger.info("✅ 工具初始化完成")
+                            try:
+                                while self._running.get(server_id, False):
+                                    await asyncio.sleep(0.1)
+                            except asyncio.CancelledError:
+                                logger.info(f"🛑 SSE {server_id} 正常取消")
+                                raise
+            except asyncio.CancelledError:
+                logger.info(f"🛑 Task 取消（正常）")
+                raise
+            except asyncio.TimeoutError:
+                logger.error(f"⏰ SSE {server_id} 超时")
+            except Exception as e:
+                logger.error(f"❌ SSE 连接失败: {e}", exc_info=True)
+                self.sessions.pop(server_id, None)
+            finally:
+                self._running.pop(server_id, None)
+                logger.info(f"🧹 清理 {server_id}")
 
     async def connect_stdio(
         self, command: str, args: List[str], server_id: str = ""
@@ -172,28 +189,28 @@ class MCPClients(ToolCollection):
 
     async def disconnect(self, server_id: str = "") -> None:
         """Disconnect from a specific MCP server or all servers if no server_id provided."""
-        if server_id:
-            if server_id in self.sessions:
-                try:
-                    self._running[server_id] = False
-                    self._task[server_id].cancel()
-                    await self._task[server_id]
+        if server_id and server_id in self._task:
+            self._running[server_id] = False
+            try:
+                self._task[server_id].cancel()
+                await asyncio.wait_for(self._task[server_id], timeout = 5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
 
-                    # Clean up references
-                    self.sessions.pop(server_id, None)
-                    self._running.pop(server_id, None)
-                    self._task.pop(server_id, None)
+            # Clean up references
+            self.sessions.pop(server_id, None)
+            self._task.pop(server_id, None)
+            self._ready_events.pop(server_id, None)
+            self._running.pop(server_id, None)
 
-                    # Remove tools associated with this server
-                    self.tool_map = {
-                        k: v
-                        for k, v in self.tool_map.items()
-                        if v.server_id != server_id
-                    }
-                    self.tools = tuple(self.tool_map.values())
-                    logger.info(f"Disconnected from MCP server {server_id}")
-                except Exception as e:
-                    logger.error(f"Error disconnecting from server {server_id}: {e}")
+            # Remove tools associated with this server
+            self.tool_map = {
+                k: v
+                for k, v in self.tool_map.items()
+                if v.server_id != server_id
+            }
+            self.tools = tuple(self.tool_map.values())
+            logger.info(f"Disconnected from MCP server {server_id}")
         else:
             # Disconnect from all servers in a deterministic order
             for sid in sorted(list(self.sessions.keys())):
