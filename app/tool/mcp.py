@@ -64,13 +64,25 @@ class MCPClients(ToolCollection):
         self._task[server_id] = asyncio.create_task(self._sse_session_loop(server_url, server_id))
 
     async def _sse_session_loop(self, server_url, server_id):
+      try:
+        logger.info(f"🔄 尝试连接 SSE: {server_url}")
         async with sse_client(url = server_url) as streams:
+            logger.info(f"✅ SSE streams 获取成功: {streams}")
             async with ClientSession(*streams) as session:
+                logger.info(f"✅ ClientSession 创建成功")
                 self.sessions[server_id] = session
+                logger.info("🔄 调用 session.initialize()")
                 await session.initialize()
+                logger.info("✅ initialize 完成")
                 await self._initialize_and_list_tools(server_id)
+                logger.info("✅ 工具初始化完成")
                 while self._running:
                     await asyncio.sleep(0.1)
+      except Exception as e:
+        logger.error(f"❌ SSE 连接失败: {e}", exc_info=True)
+        self.sessions.pop(server_id, None)
+    finally:
+        logger.info(f"🧹 清理 {server_id}")
 
     async def connect_stdio(
         self, command: str, args: List[str], server_id: str = ""
