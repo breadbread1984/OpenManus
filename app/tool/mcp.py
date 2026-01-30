@@ -81,7 +81,7 @@ class MCPClients(ToolCollection):
       except Exception as e:
         logger.error(f"❌ SSE 连接失败: {e}", exc_info=True)
         self.sessions.pop(server_id, None)
-    finally:
+      finally:
         logger.info(f"🧹 清理 {server_id}")
 
     async def connect_stdio(
