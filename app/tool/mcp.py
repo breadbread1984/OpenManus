@@ -61,10 +61,12 @@ class MCPClients(ToolCollection):
         exit_stack = AsyncExitStack()
         self.exit_stacks[server_id] = exit_stack
 
-        async with sse_client(url = server_url) as streams:
-            async with ClientSession(*streams) as session:
-                self.sessions[server_id] = session
-                await self._initialize_and_list_tools(server_id)
+        streams_context = sse_client(url=server_url)
+        streams = await exit_stack.enter_async_context(streams_context)
+        session = await exit_stack.enter_async_context(ClientSession(*streams))
+        self.sessions[server_id] = session
+
+        await self._initialize_and_list_tools(server_id)
 
     async def connect_stdio(
         self, command: str, args: List[str], server_id: str = ""
